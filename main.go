@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"live-typing-race/utils"
@@ -19,10 +20,9 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-var sentence = `Though she be but little, she is fierce.
-though though though though though though
-He gave a thorough explanation of
-`
+var sentence = `Though she* be but little, she is fierce.
+Though though though* though though though
+He gave* a thorough explanation of`
 
 type Player struct {
 	Name              string          `json:"name"`
@@ -46,6 +46,19 @@ func (player *Player) calculate_wpm() {
 	}
 }
 
+var power_ups_gotten = map[int]bool{}
+var power_up = "*"
+
+func init() {
+	split_sentence := strings.Split(sentence, "")
+	for i, letter := range split_sentence {
+		if letter == power_up {
+			power_ups_gotten[i] = false
+		}
+	}
+
+}
+
 func (player *Player) on_type_letter(letter string) {
 	if letter == "ArrowLeft" || letter == "ArrowRight" || letter == "ArrowUp" || letter == "ArrowDown" || letter == "Shift" || letter == "Control" || letter == "Meta" || letter == "Alt" {
 		return
@@ -55,19 +68,38 @@ func (player *Player) on_type_letter(letter string) {
 		if player.Letter_index_upto < 0 {
 			player.Letter_index_upto = 0
 		}
-		return
+		goto Broadcast_section
 	}
 	if player.Letter_index_upto >= len(sentence) {
 		return
 	}
 	if letter == string(sentence[player.Letter_index_upto]) {
 		player.Correct_letter++
+		next_index := player.Letter_index_upto + 1
+		if power_up_gotten, ok := power_ups_gotten[next_index]; ok && !power_up_gotten {
+			power_ups_gotten[next_index] = true
+			before_jump := player.Letter_index_upto
+			player.Letter_index_upto += 10
+			broadcast_map(map[string]any{
+				"type":  "power_up_gotten",
+				"index": before_jump,
+			})
+			broadcast_map(map[string]any{
+				"type": "player_jump",
+				"from": before_jump,
+				"to":   player.Letter_index_upto,
+			})
+			goto Broadcast_section
+		}
 	} else {
 		player.Incorrect_letter++
 	}
 	player.Letter_index_upto++
-	j, _ := json.Marshal(player)
-	broadcast(string(j))
+Broadcast_section:
+	broadcast_map(map[string]any{
+		"type":   "player-typed",
+		"player": player,
+	})
 }
 
 var players = make(map[*websocket.Conn]*Player)
@@ -125,23 +157,22 @@ func remove_client(conn *websocket.Conn) {
 	}
 }
 
-func broadcast_(message map[interface{}]interface{}) {
+func broadcast(message []byte) {
 	fmt.Printf("broadcast: %v\n", message)
 	for _, client := range clients {
-		if err := client.WriteJSON(message); err != nil {
-			remove_client(client)
-		}
-	}
-}
-
-func broadcast(message string) {
-	fmt.Printf("broadcast: %v\n", message)
-	for _, client := range clients {
-		if err := client.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
+		if err := client.WriteMessage(websocket.TextMessage, message); err != nil {
 			remove_client(client)
 		}
 	}
 	fmt.Printf("finished broadcasting")
+}
+
+func broadcast_map[K comparable, V any](message map[K]V) {
+	j, err := json.Marshal(message)
+	if err != nil {
+		panic(err)
+	}
+	broadcast(j)
 }
 
 func main() {
@@ -184,6 +215,9 @@ func main() {
 	})
 
 	r.GET("/ws", wsHandler)
+	r.GET("/power_ups_gotten", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"power_ups_gotten": power_ups_gotten})
+	})
 
 	fmt.Println("Server running at http://localhost:" + port)
 
@@ -196,12 +230,11 @@ func main() {
 				player.calculate_wpm()
 				converted[player.Name] = player
 			}
-			jsonData, err := json.Marshal(converted)
-			if err != nil {
-				fmt.Println("Error marshaling players:", err)
-				continue
-			}
-			broadcast(string(jsonData))
+
+			broadcast_map(map[string]any{
+				"type":    "players",
+				"players": converted,
+			})
 		}
 	}()
 

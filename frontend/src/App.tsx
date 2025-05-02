@@ -1,12 +1,13 @@
 
-import { Accessor, createSignal, For, type Component } from 'solid-js';
+import { Accessor, createSignal, For, Match, Show, Switch, type Component } from 'solid-js';
 
 import logo from './logo.svg';
 import styles from './App.module.css';
 import { backend_url } from './settings';
-import { createMutable } from 'solid-js/store';
+import { createMutable, produce } from 'solid-js/store';
 import { Players } from 'tone';
-import { object } from 'zod';
+import { object, string } from 'zod';
+import { UnderlinedChar } from './UnderlinedChar';
 
 type Player = {
   name: string;
@@ -17,7 +18,7 @@ type Player = {
   color: string;
 }
 
-
+const   power_up = "*"
 const ws = new WebSocket(`${backend_url}/ws`)
 
 
@@ -27,10 +28,28 @@ const [server_data, setServerData] = createSignal<{[key: string]: Player}>({})
 ws.onmessage = function (event) {
   console.log("onmessage: event", event.data)
   const j = JSON.parse(event.data)
-  if (j['name']) {
-    setServerData({...server_data(), [j['name']]: j})
-  } else{
-    setServerData(j)
+  if (j['type'] == "power_up_gotten"){
+    const index: number = j['index'] 
+    power_ups_gotten[String(index)] = true 
+  }
+  switch (j['type']) {
+    case "players":
+      setServerData(j['players'])
+      break;
+    case "player_jump":
+      const from: number = j['from'] 
+      const to: number = j['to'] 
+      for (let i = from; i < to; i++) {
+        sentence[i].typed = "correct"
+      } 
+      setLetterUpto(to)
+      break;
+    case "player-typed":
+      const player: Player = j['player'] 
+      setServerData({...server_data(), [player.name]: player})
+      break;
+    default:
+      break;
   }
 }
 type LetterInfo = {
@@ -48,6 +67,15 @@ fetch(`${backend_url}/sentence`).then(response => response.json()).then(data => 
     sentence.push({ letter, typed: false })
   })
 })
+
+const power_ups_gotten = createMutable<{[key: string]: boolean}>({})
+fetch(`${backend_url}/power_ups_gotten`).then(response => response.json()).then(data => {
+  for (const [index, value] of Object.entries(data.power_ups_gotten)) {
+    power_ups_gotten[String(index)] = value as boolean
+  }
+})
+
+
 
 
 
@@ -77,56 +105,55 @@ window.addEventListener("keydown", e => {
 const App: Component = () => {
   return (
     <>
-    <div style={{display: "flex", "justify-content": "center", "align-items": "center", "font-size": "1.2rem", "flex-wrap": "wrap", "width": "100%"}}>
-      <For each={sentence}>{(letter, index) =><span style={{
-        "padding": "0 .07rem",
+    <div style={{display: "flex", "justify-content": "center", "align-items": "center", "font-size": "1.2rem", "flex-wrap": "wrap", "width": "100%",
+      gap: ".2rem",
+      "font-family": "monospace"
+    }}>
+      <For each={sentence}>{(letter: LetterInfo, index: Accessor<number>) =><span style={{
+        "padding": "0 .05rem",
+        "margin-top": ".5rem",
           "display": "inline",
           "width": [" ", "\n", "\t", "."].includes(letter.letter) ? ".2rem" : "auto",
-          background: letter.typed === "correct" ? "rgb(0, 220, 0)" : letter.typed === "incorrect" ? "rgb(255, 0, 0)" : "white",
-          color: letter.typed === "correct" ? "white" : letter.typed === "incorrect" ? "white" : "black" 
+          color: letter.typed === "correct" ? "rgb(0, 220, 0)" : letter.typed === "incorrect" ? "rgb(255, 0, 0)" : "black",
+          // background: letter.typed === "correct" ? "white" : letter.typed === "incorrect" ? "white" : "black" 
         }}>
-          
+        <Switch>
+          <Match when={letter.letter == power_up}>
+          <span style={{color: "green", "font-weight": "bold",
+          "font-family": "cursive",
+              padding: "1px 2px",
+              "margin": "2px 4px",
+              // border: "solid 2px lightgreen",
+              "border-radius": "8px",
+              "box-shadow": "0 0 10px lightgreen"
+            }}>
+            {' +10 '}
+          </span>
+          </Match>
+          <Match when={letter.letter !== power_up}>
+            <UnderlinedChar char={letter.letter} 
+            underlineColors={Object.values(server_data()).filter(player => player.letter_index_upto > index()+1).map(player => player.color)} 
+            />
+          </Match>
+        </Switch>
+          {/* <Show when={(() => {
+            console.log("recalc of power_up_gotten", power_ups_gotten[String(index())])
+              const power_up_gotten = power_ups_gotten[String(index())]
+              return letter.letter !== power_up || power_up_gotten == false
+            })()}>
          <UnderlinedChar char={letter.letter} 
          underlineColors={Object.values(server_data()).filter(player => player.letter_index_upto > index()+1).map(player => player.color)} 
          />
-          
-          
-
+         </Show> */}
         </span>
       }</For>
     </div>
+    {JSON.stringify(power_ups_gotten)}
+
     <ServerData />
     </>
   );
 };
-
-
-
-function UnderlinedChar(props: {char: string, underlineColors: string[] }) {
-  console.log({underlineColors: props.underlineColors})
-  return (
-    <span style={{ position: 'relative', display: 'inline' }}>
-      {props.char}
-      {props.underlineColors.map((color, index) => (
-        <span
-          style={{
-            position: 'absolute',
-            content: '""',
-            left: 0,
-            width: '200%',
-            height: '2px',
-            background: color,
-            bottom: `-${2 + index * 4}px`,
-          }}
-        ></span>
-      ))}
-    </span>
-  );
-}
-
-
-
-
 
 
 
