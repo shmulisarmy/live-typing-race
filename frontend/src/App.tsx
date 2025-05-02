@@ -1,10 +1,12 @@
 
-import { createSignal, For, type Component } from 'solid-js';
+import { Accessor, createSignal, For, type Component } from 'solid-js';
 
 import logo from './logo.svg';
 import styles from './App.module.css';
 import { backend_url } from './settings';
 import { createMutable } from 'solid-js/store';
+import { Players } from 'tone';
+import { object } from 'zod';
 
 type Player = {
   name: string;
@@ -12,6 +14,7 @@ type Player = {
   incorrect_letter: number;
   letter_index_upto: number;
   wpm: number;
+  color: string;
 }
 
 
@@ -19,11 +22,16 @@ const ws = new WebSocket(`${backend_url}/ws`)
 
 
 
-const [server_data, setServerData] = createSignal({})
+const [server_data, setServerData] = createSignal<{[key: string]: Player}>({})
 
 ws.onmessage = function (event) {
   console.log("onmessage: event", event.data)
-  setServerData(JSON.parse(event.data))
+  const j = JSON.parse(event.data)
+  if (j['name']) {
+    setServerData({...server_data(), [j['name']]: j})
+  } else{
+    setServerData(j)
+  }
 }
 type LetterInfo = {
   letter: string;
@@ -68,12 +76,79 @@ window.addEventListener("keydown", e => {
 
 const App: Component = () => {
   return (
-    <div class={styles.App}>
-      <For each={sentence}>{(letter: LetterInfo) => <span style={{ color: letter.typed === "correct" ? "green" : letter.typed === "incorrect" ? "red" : "black" }}>{letter.letter}</span>}</For>
-      <ServerData />
+    <>
+    <div style={{display: "flex", "justify-content": "center", "align-items": "center", "font-size": "1.2rem", "flex-wrap": "wrap", "width": "100%"}}>
+      <For each={sentence}>{(letter, index) =><span style={{
+        "padding": "0 .07rem",
+          "display": "inline",
+          "width": [" ", "\n", "\t", "."].includes(letter.letter) ? ".2rem" : "auto",
+          background: letter.typed === "correct" ? "rgb(0, 220, 0)" : letter.typed === "incorrect" ? "rgb(255, 0, 0)" : "white",
+          color: letter.typed === "correct" ? "white" : letter.typed === "incorrect" ? "white" : "black" 
+        }}>
+          
+         <UnderlinedChar char={letter.letter} 
+         underlineColors={Object.values(server_data()).filter(player => player.letter_index_upto > index()+1).map(player => player.color)} 
+         />
+          
+          
+
+        </span>
+      }</For>
     </div>
+    <ServerData />
+    <Other />
+    </>
   );
 };
+
+
+
+function UnderlinedChar(props: {char: string, underlineColors: string[] }) {
+  console.log({underlineColors: props.underlineColors})
+  return (
+    <span style={{ position: 'relative', display: 'inline' }}>
+      {props.char}
+      {props.underlineColors.map((color, index) => (
+        <span
+          style={{
+            position: 'absolute',
+            content: '""',
+            left: 0,
+            width: '200%',
+            height: '2px',
+            background: color,
+            bottom: `-${2 + index * 4}px`,
+          }}
+        ></span>
+      ))}
+    </span>
+  );
+}
+
+function Other() {
+  const doubly = "doubly underlined";
+  const triply = "triply underlined";
+
+  return (
+    <div>
+      <p>
+        This is{' '}
+        {doubly.split('').map((char, i) => (
+          <UnderlinedChar char={char} underlineColors={['red', 'blue']} />
+        ))}{' '}
+        text.
+      </p>
+      <p>
+        This is{' '}
+        {triply.split('').map((char, i) => (
+          <UnderlinedChar char={char} underlineColors={['red', 'blue', 'green']} />
+        ))}{' '}
+        text.
+      </p>
+    </div>
+  );
+}
+
 
 
 

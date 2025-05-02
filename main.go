@@ -31,8 +31,12 @@ type Player struct {
 	ws_connection     *websocket.Conn `json:"-"`
 	Letter_index_upto int             `json:"letter_index_upto"`
 	Wpm               int             `json:"wpm"`
+	Color             string          `json:"color"`
 }
 
+var colors = []string{
+	"red", "green", "blue", "yellow", "orange", "purple", "pink", "brown", "gray", "black", "white",
+}
 var time_of_game_start float64 = utils.Current_time()
 
 func (player *Player) calculate_wpm() {
@@ -62,6 +66,8 @@ func (player *Player) on_type_letter(letter string) {
 		player.Incorrect_letter++
 	}
 	player.Letter_index_upto++
+	j, _ := json.Marshal(player)
+	broadcast(string(j))
 }
 
 var players = make(map[*websocket.Conn]*Player)
@@ -92,6 +98,7 @@ func wsHandler(c *gin.Context) {
 		Incorrect_letter:  0,
 		ws_connection:     conn,
 		Letter_index_upto: 0,
+		Color:             colors[name_upto%len(colors)],
 	}
 	players[conn] = player
 	name_upto++
