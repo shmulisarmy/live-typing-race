@@ -96,7 +96,6 @@ const App: Component = () => {
       }</For>
     </div>
     <ServerData />
-    <Other />
     </>
   );
 };
@@ -125,29 +124,7 @@ function UnderlinedChar(props: {char: string, underlineColors: string[] }) {
   );
 }
 
-function Other() {
-  const doubly = "doubly underlined";
-  const triply = "triply underlined";
 
-  return (
-    <div>
-      <p>
-        This is{' '}
-        {doubly.split('').map((char, i) => (
-          <UnderlinedChar char={char} underlineColors={['red', 'blue']} />
-        ))}{' '}
-        text.
-      </p>
-      <p>
-        This is{' '}
-        {triply.split('').map((char, i) => (
-          <UnderlinedChar char={char} underlineColors={['red', 'blue', 'green']} />
-        ))}{' '}
-        text.
-      </p>
-    </div>
-  );
-}
 
 
 
